@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: background-remover
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: sh build.sh
+    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+    scaling:
+      minInstances: 1
+      maxInstances: 1
