@@ -1,15 +1,11 @@
 services:
   - type: web
     name: background-remover
-    runtime: python
+    env: python
     plan: free
-    region: oregon
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
-    autoDeploy: true
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.10.12
+    buildCommand: curl -sSL https://install.python-poetry.org | python3 - && poetry install
+    startCommand: poetry run gunicorn app:app
+    pythonVersion: 3.10.12
     scaling:
       minInstances: 1
       maxInstances: 1
