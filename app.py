@@ -5,6 +5,7 @@ import io
 from PIL import Image
 from rembg import remove
 import logging
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -13,13 +14,18 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
+# Set max content length to 16MB
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+
 @app.route('/', methods=['GET'])
 def health_check():
     """Health check endpoint"""
     return jsonify({
         "status": "healthy",
         "message": "Background Remover API is running",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "python_version": os.sys.version,
+        "rembg_available": True
     })
 
 @app.route('/remove-background', methods=['POST'])
@@ -113,4 +119,5 @@ def internal_error(e):
     }), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=False, host='0.0.0.0', port=port)
