@@ -1,25 +1,30 @@
+import os
+import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import base64
 import io
 from PIL import Image
 from rembg import remove
-import logging
-import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Get port from environment variable FIRST
+PORT = int(os.environ.get('PORT', 10000))
+logger.info(f"🚀 Starting app with PORT={PORT}")
+
 # Create Flask app
 app = Flask(__name__)
 
-# Configure CORS properly
+# Configure CORS with explicit settings
 CORS(app, 
      origins=['*'],
      methods=['GET', 'POST', 'OPTIONS'],
-     allow_headers=['Content-Type', 'Authorization', 'Accept'],
-     supports_credentials=False
+     allow_headers=['*'],
+     supports_credentials=False,
+     send_wildcard=True
 )
 
 # Set max content length to 16MB
@@ -28,26 +33,28 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 @app.route('/', methods=['GET', 'OPTIONS'])
 def health_check():
     """Health check endpoint"""
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = '*'
+        return response
+    
     try:
-        if request.method == 'OPTIONS':
-            response = jsonify({'status': 'ok'})
-            response.headers.add('Access-Control-Allow-Origin', '*')
-            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-            response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-            return response
-            
-        port = os.environ.get('PORT', 'Not set')
         response_data = {
             "status": "healthy",
             "message": "Background Remover API is running",
             "version": "1.0.0",
-            "port": port,
+            "port": str(PORT),
             "rembg_available": True,
-            "cors_enabled": True
+            "cors_enabled": True,
+            "environment": "production"
         }
         
         response = jsonify(response_data)
-        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = '*'
         return response
         
     except Exception as e:
@@ -56,20 +63,20 @@ def health_check():
             "status": "error",
             "message": f"Health check failed: {str(e)}"
         })
-        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers['Access-Control-Allow-Origin'] = '*'
         return response, 500
 
 @app.route('/remove-background', methods=['POST', 'OPTIONS'])
 def remove_background():
     """Remove background from uploaded image"""
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = '*'
+        return response
+    
     try:
-        if request.method == 'OPTIONS':
-            response = jsonify({'status': 'ok'})
-            response.headers.add('Access-Control-Allow-Origin', '*')
-            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-            response.headers.add('Access-Control-Allow-Methods', 'POST,OPTIONS')
-            return response
-        
         data = request.get_json()
         
         if not data or 'image' not in data:
@@ -77,7 +84,7 @@ def remove_background():
                 "error": "No image data provided",
                 "message": "Please provide base64 encoded image in 'image' field"
             })
-            response.headers.add('Access-Control-Allow-Origin', '*')
+            response.headers['Access-Control-Allow-Origin'] = '*'
             return response, 400
         
         image_data = data['image']
@@ -93,7 +100,7 @@ def remove_background():
                 "error": "Invalid base64 image data",
                 "message": "Could not decode the provided image data"
             })
-            response.headers.add('Access-Control-Allow-Origin', '*')
+            response.headers['Access-Control-Allow-Origin'] = '*'
             return response, 400
         
         try:
@@ -105,7 +112,7 @@ def remove_background():
                 "error": "Invalid image format",
                 "message": "Could not process the provided image"
             })
-            response.headers.add('Access-Control-Allow-Origin', '*')
+            response.headers['Access-Control-Allow-Origin'] = '*'
             return response, 400
         
         try:
@@ -125,7 +132,7 @@ def remove_background():
                 "image": f"data:image/png;base64,{output_base64}",
                 "message": "Background removed successfully"
             })
-            response.headers.add('Access-Control-Allow-Origin', '*')
+            response.headers['Access-Control-Allow-Origin'] = '*'
             return response
             
         except Exception as e:
@@ -134,7 +141,7 @@ def remove_background():
                 "error": "Background removal failed",
                 "message": f"Error processing image: {str(e)}"
             })
-            response.headers.add('Access-Control-Allow-Origin', '*')
+            response.headers['Access-Control-Allow-Origin'] = '*'
             return response, 500
     
     except Exception as e:
@@ -143,45 +150,34 @@ def remove_background():
             "error": "Internal server error",
             "message": "An unexpected error occurred"
         })
-        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers['Access-Control-Allow-Origin'] = '*'
         return response, 500
 
-@app.errorhandler(413)
-def too_large(e):
-    response = jsonify({
-        "error": "File too large",
-        "message": "The uploaded image is too large. Please use a smaller image."
-    })
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    return response, 413
-
-@app.errorhandler(500)
-def internal_error(e):
-    response = jsonify({
-        "error": "Internal server error",
-        "message": "Something went wrong on our end"
-    })
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    return response, 500
-
-@app.before_request
-def handle_preflight():
-    if request.method == "OPTIONS":
-        response = jsonify({'status': 'ok'})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add('Access-Control-Allow-Headers', "*")
-        response.headers.add('Access-Control-Allow-Methods', "*")
-        return response
-
+# Global CORS headers for all responses
 @app.after_request
 def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = '*'
+    response.headers['Access-Control-Max-Age'] = '86400'
     return response
 
-# This will run when using gunicorn or direct python execution
+# CRITICAL: This ensures immediate port binding
+def create_app():
+    """Application factory"""
+    return app
+
+# For direct execution (python app.py)
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    logger.info(f"Starting Flask app on 0.0.0.0:{port}")
-    app.run(host='0.0.0.0', port=port, debug=False)
+    logger.info(f"🔥 DIRECT EXECUTION: Binding to 0.0.0.0:{PORT}")
+    app.run(host='0.0.0.0', port=PORT, debug=False, threaded=True)
+
+# For gunicorn execution
+def application(environ, start_response):
+    """WSGI application"""
+    return app(environ, start_response)
+
+# Alternative entry point
+def main():
+    logger.info(f"🔥 MAIN FUNCTION: Binding to 0.0.0.0:{PORT}")
+    app.run(host='0.0.0.0', port=PORT, debug=False, threaded=True)
