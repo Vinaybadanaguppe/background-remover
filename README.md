@@ -10,6 +10,41 @@ A complete background removal service using Flask + rembg library, deployable to
 
 ## Deployment Instructions
 
+### Python Version Configuration
+
+Render.com uses Python 3.13 by default, but rembg works best with Python 3.11. To specify the Python version:
+
+### Method 1: Using runtime.txt (Recommended)
+Create a `runtime.txt` file in your project root with:
+\`\`\`
+python-3.11.7
+\`\`\`
+
+### Method 2: Using Environment Variable
+In your Render.com service settings, add an environment variable:
+- Key: `PYTHON_VERSION`
+- Value: `3.11.7`
+
+### Updated Deployment Steps for Render.com:
+
+1. Create a new account on [Render.com](https://render.com)
+2. Connect your GitHub repository
+3. Create a new "Web Service"
+4. Configure the service:
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 120 app:app`
+   - **Environment**: Python 3 (will use runtime.txt for version)
+5. Make sure `runtime.txt` is in your repository root
+6. Deploy and note your service URL
+
+If you're still having issues, you can also try these alternative approaches:
+
+### Alternative: Use Docker Deployment
+If the Python version issues persist, you can use Docker deployment on Render:
+1. Select "Docker" as your environment
+2. Use the provided Dockerfile
+3. The Dockerfile specifies Python 3.9 which is fully compatible
+
 ### 1. Deploy Backend to Render.com
 
 1. Create a new account on [Render.com](https://render.com)
