@@ -20,13 +20,22 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 @app.route('/', methods=['GET'])
 def health_check():
     """Health check endpoint"""
-    return jsonify({
-        "status": "healthy",
-        "message": "Background Remover API is running",
-        "version": "1.0.0",
-        "python_version": os.sys.version,
-        "rembg_available": True
-    })
+    try:
+        import sys
+        import platform
+        return jsonify({
+            "status": "healthy",
+            "message": "Background Remover API is running",
+            "version": "1.0.0",
+            "python_version": sys.version,
+            "platform": platform.platform(),
+            "rembg_available": True
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Health check failed: {str(e)}"
+        }), 500
 
 @app.route('/remove-background', methods=['POST'])
 def remove_background():
@@ -77,6 +86,7 @@ def remove_background():
             img_byte_arr = img_byte_arr.getvalue()
             
             # Remove background
+            logger.info("Starting background removal...")
             output_bytes = remove(img_byte_arr)
             
             # Convert back to base64
