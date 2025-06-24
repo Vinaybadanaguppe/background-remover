@@ -11,8 +11,9 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Create Flask app
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
 
 # Set max content length to 16MB
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
@@ -21,16 +22,12 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 def health_check():
     """Health check endpoint"""
     try:
-        import sys
-        import platform
         port = os.environ.get('PORT', 'Not set')
         return jsonify({
             "status": "healthy",
             "message": "Background Remover API is running",
             "version": "1.0.0",
             "port": port,
-            "python_version": sys.version,
-            "platform": platform.platform(),
             "rembg_available": True
         })
     except Exception as e:
@@ -131,8 +128,17 @@ def internal_error(e):
         "message": "Something went wrong on our end"
     }), 500
 
-# This ensures the app binds to the correct port when run directly
+# CRITICAL: This is the Render.com port binding fix
 if __name__ == '__main__':
+    # Get port from environment variable (Render.com requirement)
     port = int(os.environ.get('PORT', 5000))
-    logger.info(f"Starting Flask app on port {port}")
-    app.run(debug=False, host='0.0.0.0', port=port)
+    
+    # Log the port for debugging
+    logger.info(f"Starting Flask app on 0.0.0.0:{port}")
+    
+    # MUST bind to 0.0.0.0 for Render.com (not localhost or 127.0.0.1)
+    app.run(
+        host='0.0.0.0',  # Required by Render.com
+        port=port,       # Use PORT environment variable
+        debug=False
+    )
