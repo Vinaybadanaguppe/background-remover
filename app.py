@@ -1,5 +1,6 @@
 import os
 import logging
+import gc
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import base64
@@ -11,24 +12,23 @@ from rembg import remove
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Get port from environment variable FIRST
+# Get port from environment variable
 PORT = int(os.environ.get('PORT', 10000))
 logger.info(f"🚀 Starting app with PORT={PORT}")
 
 # Create Flask app
 app = Flask(__name__)
 
-# Configure CORS with explicit settings
+# Configure CORS
 CORS(app, 
      origins=['*'],
      methods=['GET', 'POST', 'OPTIONS'],
      allow_headers=['*'],
-     supports_credentials=False,
-     send_wildcard=True
+     supports_credentials=False
 )
 
-# Set max content length to 16MB
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+# Set max content length to 8MB (reduced from 16MB for free tier)
+app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024
 
 @app.route('/', methods=['GET', 'OPTIONS'])
 def health_check():
@@ -48,13 +48,12 @@ def health_check():
             "port": str(PORT),
             "rembg_available": True,
             "cors_enabled": True,
-            "environment": "production"
+            "environment": "production",
+            "max_file_size": "8MB"
         }
         
         response = jsonify(response_data)
         response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = '*'
         return response
         
     except Exception as e:
@@ -77,6 +76,8 @@ def remove_background():
         return response
     
     try:
+        logger.info("🎯 Starting background removal request")
+        
         data = request.get_json()
         
         if not data or 'image' not in data:
@@ -93,7 +94,19 @@ def remove_background():
             image_data = image_data.split(',')[1]
         
         try:
+            logger.info("📥 Decoding base64 image...")
             image_bytes = base64.b64decode(image_data)
+            logger.info(f"📊 Image size: {len(image_bytes)} bytes")
+            
+            # Check if image is too large for free tier
+            if len(image_bytes) > 5 * 1024 * 1024:  # 5MB limit
+                response = jsonify({
+                    "error": "Image too large for free tier",
+                    "message": "Please use an image smaller than 5MB"
+                })
+                response.headers['Access-Control-Allow-Origin'] = '*'
+                return response, 413
+                
         except Exception as e:
             logger.error(f"Base64 decode error: {str(e)}")
             response = jsonify({
@@ -104,8 +117,19 @@ def remove_background():
             return response, 400
         
         try:
+            logger.info("🖼️ Opening image with PIL...")
             input_image = Image.open(io.BytesIO(image_bytes))
-            logger.info(f"Processing image: {input_image.size}, mode: {input_image.mode}")
+            logger.info(f"📐 Image dimensions: {input_image.size}, mode: {input_image.mode}")
+            
+            # Resize image if too large (memory optimization)
+            max_dimension = 1024
+            if max(input_image.size) > max_dimension:
+                logger.info(f"🔄 Resizing image from {input_image.size}")
+                ratio = max_dimension / max(input_image.size)
+                new_size = tuple(int(dim * ratio) for dim in input_image.size)
+                input_image = input_image.resize(new_size, Image.Resampling.LANCZOS)
+                logger.info(f"✅ Resized to: {input_image.size}")
+            
         except Exception as e:
             logger.error(f"PIL image open error: {str(e)}")
             response = jsonify({
@@ -116,16 +140,38 @@ def remove_background():
             return response, 400
         
         try:
+            logger.info("🔄 Converting image to bytes for rembg...")
             img_byte_arr = io.BytesIO()
-            input_image.save(img_byte_arr, format='PNG')
+            
+            # Convert to RGB if necessary (rembg works better with RGB)
+            if input_image.mode in ('RGBA', 'LA'):
+                background = Image.new('RGB', input_image.size, (255, 255, 255))
+                background.paste(input_image, mask=input_image.split()[-1] if input_image.mode == 'RGBA' else None)
+                input_image = background
+            elif input_image.mode != 'RGB':
+                input_image = input_image.convert('RGB')
+            
+            input_image.save(img_byte_arr, format='PNG', optimize=True)
             img_byte_arr = img_byte_arr.getvalue()
             
-            logger.info("Starting background removal...")
+            logger.info("🤖 Starting AI background removal...")
+            
+            # Clear memory before heavy operation
+            gc.collect()
+            
+            # Remove background
             output_bytes = remove(img_byte_arr)
             
+            logger.info("✅ Background removal successful!")
+            
+            # Convert back to base64
             output_base64 = base64.b64encode(output_bytes).decode('utf-8')
             
-            logger.info("Background removal successful")
+            # Clear memory
+            del img_byte_arr, output_bytes, input_image
+            gc.collect()
+            
+            logger.info("📤 Sending response...")
             
             response = jsonify({
                 "success": True,
@@ -137,9 +183,13 @@ def remove_background():
             
         except Exception as e:
             logger.error(f"Background removal error: {str(e)}")
+            
+            # Clear memory on error
+            gc.collect()
+            
             response = jsonify({
                 "error": "Background removal failed",
-                "message": f"Error processing image: {str(e)}"
+                "message": f"Processing failed - try a smaller image (max 2MB recommended)"
             })
             response.headers['Access-Control-Allow-Origin'] = '*'
             return response, 500
@@ -153,29 +203,18 @@ def remove_background():
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response, 500
 
-# Global CORS headers for all responses
+# Global CORS headers
 @app.after_request
 def after_request(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = '*'
-    response.headers['Access-Control-Max-Age'] = '86400'
     return response
 
-# CRITICAL: This ensures immediate port binding
-def create_app():
-    """Application factory"""
-    return app
-
-# For direct execution (python app.py)
+# For direct execution
 if __name__ == '__main__':
     logger.info(f"🔥 DIRECT EXECUTION: Binding to 0.0.0.0:{PORT}")
     app.run(host='0.0.0.0', port=PORT, debug=False, threaded=True)
-
-# For gunicorn execution
-def application(environ, start_response):
-    """WSGI application"""
-    return app(environ, start_response)
 
 # Alternative entry point
 def main():
