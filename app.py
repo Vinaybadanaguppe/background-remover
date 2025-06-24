@@ -23,15 +23,18 @@ def health_check():
     try:
         import sys
         import platform
+        port = os.environ.get('PORT', 'Not set')
         return jsonify({
             "status": "healthy",
             "message": "Background Remover API is running",
             "version": "1.0.0",
+            "port": port,
             "python_version": sys.version,
             "platform": platform.platform(),
             "rembg_available": True
         })
     except Exception as e:
+        logger.error(f"Health check error: {str(e)}")
         return jsonify({
             "status": "error",
             "message": f"Health check failed: {str(e)}"
@@ -128,6 +131,8 @@ def internal_error(e):
         "message": "Something went wrong on our end"
     }), 500
 
+# This ensures the app binds to the correct port when run directly
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
+    logger.info(f"Starting Flask app on port {port}")
     app.run(debug=False, host='0.0.0.0', port=port)
