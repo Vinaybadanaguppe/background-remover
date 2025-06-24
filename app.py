@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 import gc
 from flask import Flask, request, jsonify
@@ -8,13 +9,16 @@ import io
 from PIL import Image
 from rembg import remove
 
+# CRITICAL: Get port FIRST and log it immediately
+PORT = int(os.environ.get('PORT', 10000))
+print(f"🚀 STARTING APP ON PORT: {PORT}")
+print(f"🌐 BINDING TO: 0.0.0.0:{PORT}")
+sys.stdout.flush()
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Get port from environment variable
-PORT = int(os.environ.get('PORT', 10000))
-logger.info(f"🚀 Starting app with PORT={PORT}")
+logger.info(f"🔥 Flask app initializing on port {PORT}")
 
 # Create Flask app
 app = Flask(__name__)
@@ -27,7 +31,7 @@ CORS(app,
      supports_credentials=False
 )
 
-# Set max content length to 8MB (reduced from 16MB for free tier)
+# Set max content length
 app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024
 
 @app.route('/', methods=['GET', 'OPTIONS'])
@@ -49,7 +53,7 @@ def health_check():
             "rembg_available": True,
             "cors_enabled": True,
             "environment": "production",
-            "max_file_size": "8MB"
+            "max_file_size": "5MB"
         }
         
         response = jsonify(response_data)
@@ -211,12 +215,28 @@ def after_request(response):
     response.headers['Access-Control-Allow-Headers'] = '*'
     return response
 
-# For direct execution
-if __name__ == '__main__':
-    logger.info(f"🔥 DIRECT EXECUTION: Binding to 0.0.0.0:{PORT}")
-    app.run(host='0.0.0.0', port=PORT, debug=False, threaded=True)
+# CRITICAL: Immediate execution when script runs
+def start_server():
+    """Start the Flask server immediately"""
+    print(f"🔥 STARTING FLASK SERVER ON 0.0.0.0:{PORT}")
+    print(f"🌐 Server will be accessible at: http://0.0.0.0:{PORT}")
+    sys.stdout.flush()
+    
+    try:
+        app.run(
+            host='0.0.0.0',
+            port=PORT,
+            debug=False,
+            threaded=True,
+            use_reloader=False  # Prevent double startup
+        )
+    except Exception as e:
+        print(f"❌ FAILED TO START SERVER: {e}")
+        sys.exit(1)
 
-# Alternative entry point
-def main():
-    logger.info(f"🔥 MAIN FUNCTION: Binding to 0.0.0.0:{PORT}")
-    app.run(host='0.0.0.0', port=PORT, debug=False, threaded=True)
+# Execute immediately when script is run
+if __name__ == '__main__':
+    start_server()
+
+# Also provide direct execution path
+start_server()
